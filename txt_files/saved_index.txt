@@ -1,0 +1,746 @@
+--- 
+title: "Civil Liberties and Inequalities"
+author: "Léo Persoz"
+format: 
+  dashboard:
+    logo: images/LOGO_IMAGE.png
+    nav-buttons: [github]
+    github: https://github.com/YOUR_URL
+theme: lux
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+``` {r load/install packages and datasets}
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse, 
+               here,
+               sf,
+               bslib, 
+               bsicons,
+               rnaturalearth, 
+               plotly, 
+               countrycode, 
+               htmltools, 
+               reactable,
+               janitor,
+               countrycode
+               #shiny,
+               #car,
+               #mgcv
+               )
+
+gini_raw <- read_csv(here("data/gini_coef.csv.csv"))
+
+gni_cap_raw <- read_csv(here("data/gnicap_atm_con.csv"))
+
+civil_lib_raw <- read_csv(here("data/cliberties_idea.csv"))
+
+options(scipen = 999)
+```
+
+```{r select years and pivot dataframe}
+gini_long <- gini_raw %>%
+  select(1, 147:225) %>%
+  pivot_longer(cols = 2:80,
+               names_to = "year", 
+               values_to = "value"
+               ) %>% 
+  rename(gini_index = value) %>% 
+  mutate(gini_index = gini_index/100)
+
+gni_cap_long <- gni_cap_raw %>%
+  mutate(across(2:ncol(gni_cap_raw), ~str_replace_all(., "k", "e3"))) %>%
+  mutate(across(2:ncol(gni_cap_raw), ~str_replace_all(., "M", "e6"))) %>%
+  pivot_longer(cols = 2:252,
+               names_to = "year",
+               values_to = "value") %>%
+  mutate(value = as.numeric(value)) %>% 
+  rename(gni_cap = value)
+
+civil_lib_long <- civil_lib_raw %>%
+  pivot_longer(cols = 2:48,
+               names_to = "year",
+               values_to = "value") %>% 
+  rename(civlib_index = value)
+```
+
+```{r}
+# value box - most inequality and least civil liberties
+top_highest_gini <- gini_long %>%
+  filter(year == "2023") %>%
+  mutate(country = case_when(country == "Central African Republic" ~ "Central Afr. Rep.", TRUE ~ country)) %>%
+  arrange(desc(gini_index)) %>% 
+  head(5)
+  
+top_highest_gini$country <- factor(top_highest_gini$country, levels = top_highest_gini$country)
+
+sparkcol_highest_gini <- plot_ly(top_highest_gini) %>%
+  add_bars(
+    x = ~country, y = ~gini_index,
+    text = ~country,
+    textposition = "inside",
+    textfont = list(color = "darkgrey"),
+    insidetextanchor = "middle",
+    color = I("white"), 
+    alpha = 0.8
+  ) %>%
+  layout(
+    xaxis = list(visible = F, showgrid = F, title = ""),
+    yaxis = list(visible = T, showgrid = F, title = ""),
+    hovermode = "x",
+    margin = list(t = 0, r = 0, l = 0, b = 0),
+    font = list(color = "white"),
+    paper_bgcolor = "transparent",
+    plot_bgcolor = "transparent"
+  ) %>%
+  config(displayModeBar = F) %>%
+  htmlwidgets::onRender(
+    "function(el) {
+      el.closest('.bslib-value-box')
+        .addEventListener('bslib.card', function(ev) {
+          Plotly.relayout(el, {'xaxis.visible': ev.detail.fullScreen});
+        })
+    }"
+  )
+
+# checking how skewed the gini_index variable is
+gini_index_hist <- gini_long %>%
+  filter(year == "2023") %>%
+  ggplot(aes(x = gini_index)) +
+  geom_histogram(binwidth = 0.01, fill = "blue", color = "black") #sort of skewed but okay
+
+# taking the mean (0.4) and not the median (0.38) because data isn't so skewed
+mean_gini <- gini_long %>%
+  filter(year == "2023") %>%
+  summarize(mean_gini = round(mean(gini_index), 2))
+
+#value_box(
+  #title = "Top 5 country with the highest Gini Index, 2023",
+  #value = "Highest Gini Index: South Africa (0.66)",
+  #showcase = sparkcol_highest_gini,
+  #full_screen = TRUE,
+  #theme = value_box_theme(bg = "#1E90FF")
+#)
+```
+
+```{r value box, highest/lowest civil liberties}
+top_highest_civlib <- civil_lib_long %>%
+  filter(year == "2021") %>%
+  arrange(desc(civlib_index)) %>% 
+  head(5)
+  
+top_highest_civlib$country <- factor(top_highest_civlib$country, levels = top_highest_civlib$country)
+
+sparkcol_highest_civlib <- plot_ly(top_highest_civlib) %>%
+  add_bars(
+    x = ~country, y = ~civlib_index,
+    text = ~country,
+    textposition = "inside",
+    textfont = list(color = "darkgrey"),
+    insidetextanchor = "middle",
+    color = I("white"), 
+    alpha = 0.8
+  ) %>%
+  layout(
+    xaxis = list(visible = F, showgrid = F, title = ""),
+    yaxis = list(visible = T, showgrid = F, title = ""),
+    hovermode = "x",
+    margin = list(t = 0, r = 0, l = 0, b = 0),
+    font = list(color = "white"),
+    paper_bgcolor = "transparent",
+    plot_bgcolor = "transparent"
+  ) %>%
+  config(displayModeBar = F) %>%
+  htmlwidgets::onRender(
+    "function(el) {
+      el.closest('.bslib-value-box')
+        .addEventListener('bslib.card', function(ev) {
+          Plotly.relayout(el, {'xaxis.visible': ev.detail.fullScreen});
+        })
+    }"
+  )
+
+top_lowest_civlib <- civil_lib_long %>%
+  filter(year == "2021") %>%
+  arrange(civlib_index) %>% 
+  head(5)
+  
+top_lowest_civlib$country <- factor(top_lowest_civlib$country, levels = top_lowest_civlib$country)
+
+sparkcol_lowest_civlib <- plot_ly(top_lowest_civlib) %>%
+  add_bars(
+    x = ~country, y = ~civlib_index,
+    text = ~country,
+    textposition = "inside",
+    textfont = list(color = "darkgrey"),
+    insidetextanchor = "middle",
+    color = I("white"), 
+    alpha = 0.8
+  ) %>%
+  layout(
+    xaxis = list(visible = F, showgrid = F, title = ""),
+    yaxis = list(visible = T, showgrid = F, title = ""),
+    hovermode = "x",
+    margin = list(t = 0, r = 0, l = 0, b = 0),
+    font = list(color = "white"),
+    paper_bgcolor = "transparent",
+    plot_bgcolor = "transparent"
+  ) %>%
+  config(displayModeBar = F) %>%
+  htmlwidgets::onRender(
+    "function(el) {
+      el.closest('.bslib-value-box')
+        .addEventListener('bslib.card', function(ev) {
+          Plotly.relayout(el, {'xaxis.visible': ev.detail.fullScreen});
+        })
+    }"
+  )
+
+```
+
+
+```{r worldmap + joining gini and map}
+country_shapess <- rnaturalearth::ne_countries()
+
+gini_long <- gini_long %>% 
+  mutate(
+    country_code = countrycode(country, 
+                               "country.name", 
+                               "iso3c"),
+    continent = countrycode(country, 
+                            "country.name",
+                            "continent"))
+
+# setdiff(gini_long$country_code, country_shapess$adm0_a3)
+# setdiff(country_shapess$adm0_a3, gini_long$country_code) 
+
+#joining gini and geometry
+geom_x_gini <- left_join(country_shapess, gini_long, by = c("adm0_a3" = "country_code")) %>% 
+  mutate(tooltip_label = paste(country,
+                               round(gini_index, 2),
+                               sep = ": ")) %>%
+  filter(year == "2023")
+
+#map fill gini 2023
+geom_x_gini_map <- 
+  geom_x_gini %>% 
+  ggplot() +
+  geom_sf(aes(fill = gini_index, text = tooltip_label, geometry = geometry)) +
+  labs(title = "Gini index (GI) per country, 2023",
+       fill = "GI") +
+  coord_sf(expand = F)
+
+map_gini_plotly <- ggplotly(geom_x_gini_map, tooltip = "text")
+```
+```{r map civil liberties}
+country_shapess <- rnaturalearth::ne_countries()
+
+civil_lib_long <- civil_lib_long %>% 
+  mutate(
+    country_code = countrycode(country, 
+                               "country.name", 
+                               "iso3c"),
+    continent = countrycode(country, 
+                            "country.name",
+                            "continent"))
+
+# setdiff(civil_lib_long$country_code, country_shapess$adm0_a3)
+# setdiff(country_shapess$adm0_a3, civil_lib_long$country_code) 
+
+#joining civil liberty index and geometry
+geom_x_civlib <- left_join(country_shapess, civil_lib_long, by = c("adm0_a3" = "country_code")) %>% 
+  mutate(tooltip_label = paste(country,
+                               civlib_index,
+                               sep = ": "))
+
+# map fill gini 2023
+geom_x_civlib_map <- 
+  geom_x_civlib %>% 
+  ggplot() +
+  geom_sf(aes(fill = civlib_index, text = tooltip_label, geometry = geometry)) +
+  scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
+  labs(title = "Civil liberties Index (CLI) per country, 2021",
+       fill = "CLI") +
+  coord_sf(expand = F)
+
+map_civlib_plotly <- ggplotly(geom_x_civlib_map, tooltip = "text")
+```
+
+
+```{r column graphs}
+highest_gini_2023 <- gini_long %>% 
+  filter(year == "2023") %>% 
+  arrange(desc(gini_index)) %>% 
+  head(20)
+
+highest_gini_2023_plot <- highest_gini_2023 %>% 
+  ggplot() +
+  geom_col(aes(y = gini_index, x = reorder(country, gini_index), fill = gini_index)) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  labs(title = "Countries with highest Gini index, 2023",
+       y = "Country",
+       x = "Gini Index")
+
+highest_gini_2023_plotly <- ggplotly(highest_gini_2023_plot) %>%
+  layout(xaxis = list(tickangle = 45))
+
+highest_gini_2000 <- gini_long %>% 
+  filter(year == "2000") %>% 
+  arrange(desc(gini_index)) %>% 
+  head(20)
+
+highest_gini_2000_plot <- highest_gini_2000 %>% 
+  ggplot() +
+  geom_col(aes(y = gini_index, x = reorder(country, gini_index), fill = gini_index)) +
+  scale_x_discrete(guide = guide_axis(angle = 45)) +
+  labs(title = "Countries with highest Gini index, 2000",
+       y = "Country",
+       x = "Gini Index")
+
+highest_gini_2000_plotly <- ggplotly(highest_gini_2000_plot) %>%
+  layout(xaxis = list(tickangle = 45))
+```
+
+
+```{r line graph mean gini}
+# world's mean
+mean_gini_year <- gini_long %>% 
+  group_by(year) %>% 
+  summarise(mean_gini = mean(gini_index, na.rm = T))
+
+mean_gini_year <- 
+  mean_gini_year %>% 
+  mutate(year = as.character(year)) %>%
+  mutate(mean_gini = as.numeric(mean_gini))
+
+# round(mean_gini_year$mean_gini, 3)
+
+# continents means
+mean_gini_year_asia <- gini_long %>% 
+  filter(continent == "Asia") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_asia = mean(gini_index, na.rm = T))
+
+mean_gini_year_africa <- gini_long %>% 
+  filter(continent == "Africa") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_afr = mean(gini_index, na.rm = T))
+
+mean_gini_year_EU <- gini_long %>% 
+  filter(continent == "Europe") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_EU = mean(gini_index, na.rm = T))
+
+mean_gini_year_ocea <- gini_long %>% 
+  filter(continent == "Oceania") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_ocea = mean(gini_index, na.rm = T))
+
+#creating north america and latin america (to avoid biases coming from economic differences between regions)
+gini_long <- gini_long %>% 
+  mutate(continent = case_when(country %in% c("USA", "Canada") & continent == "Americas" ~ "North America",
+                               !(country %in% c("USA", "Canada")) & continent == "Americas" ~ "Latin America", T ~ continent))
+
+mean_gini_year_northAM <- gini_long %>% 
+  filter(continent == "North America") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_northam = mean(gini_index, na.rm = T))
+
+mean_gini_year_latAM <- gini_long %>% 
+  filter(continent == "Latin America") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_latam = mean(gini_index, na.rm = T))
+
+# joining world's mean with regions' means in one data frame
+mean_gini_year_all <- left_join(mean_gini_year, mean_gini_year_africa)
+mean_gini_year_all <- left_join(mean_gini_year_all, mean_gini_year_asia)
+mean_gini_year_all <- left_join(mean_gini_year_all, mean_gini_year_EU)
+mean_gini_year_all <- left_join(mean_gini_year_all, mean_gini_year_northAM)
+mean_gini_year_all <- left_join(mean_gini_year_all, mean_gini_year_latAM)
+mean_gini_year_all <- left_join(mean_gini_year_all, mean_gini_year_ocea)
+
+mean_gini_year_all <- mean_gini_year_all %>% 
+  mutate(year = as.numeric(year))
+
+# covert to long format, adapt the label of the tooltip for each variable for the ggplotly call
+mean_gini_long <- mean_gini_year_all %>%
+  pivot_longer(cols = starts_with("mean_gini"), names_to = "region", values_to = "mean_gini") %>%
+  mutate(region = case_when(
+    region == "mean_gini" ~ "World",
+    region == "mean_gini_afr" ~ "Africa",
+    region == "mean_gini_asia" ~ "Asia",
+    region == "mean_gini_EU" ~ "Europe",
+    region == "mean_gini_northam" ~ "North America",
+    region == "mean_gini_latam" ~ "Latin America",
+    region == "mean_gini_ocea" ~ "Oceania",
+    TRUE ~ region),
+  tooltip_label = paste(region, " (", year, "):", round(mean_gini, 2), sep = ""))
+
+# creating the line graph
+graph_mean_gini_all <- 
+  mean_gini_long %>% 
+  ggplot() +
+  geom_line(aes(x = year, y = mean_gini, color = region, text = tooltip_label, group = region)) +
+  scale_x_continuous(breaks = seq(min(mean_gini_year_all$year), max(mean_gini_year_all$year), by = 5),
+                     guide = guide_axis(angle = 45)) +
+  scale_y_continuous(limits = c(0.28, 0.5)) +
+  labs(title = "Mean Gini index per year (world and regions)",
+       x = "Year",
+       y = "Mean Gini index",
+       color = "Region") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(size = 7))
+
+graph_mean_gini_all_plotly <- ggplotly(graph_mean_gini_all, tooltip = "text") %>%
+  layout(xaxis = list(tickangle = 45))
+```
+
+```{r dataframe gini, civlib and GNI}
+# adding country code and continent to the gni dataframe and filtering gini dataframe to 1975
+gni_cap_long <- gni_cap_long %>%
+  mutate(
+    country_code = countrycode(country, 
+                               "country.name", 
+                               "iso3c"),
+    continent = countrycode(country, 
+                            "country.name",
+                            "continent")) %>% 
+  filter(between(as.numeric(year), 1975, 2021))
+
+gini_long_75 <- gini_long %>% 
+  filter(between(as.numeric(year), 1975, 2021))
+
+# joining the gini, civil liberties and gni dataframe
+
+#setdiff(gini_long_75$country_code, civil_lib_long$country_code)
+#setdiff(civil_lib_long$country_code, gini_long_75$country_code)
+
+intermed_join <- left_join(gini_long_75, civil_lib_long, by = c("country_code", "year"))
+
+intermed_join <- intermed_join %>%
+  select(-matches("\\.y")) %>% 
+  rename(continent = continent.x,
+         country = country.x)
+
+gini_civlib_gni <- left_join(intermed_join, gni_cap_long, by = c("country_code", "year"))
+
+gini_civlib_gni <- gini_civlib_gni %>%
+  select(-matches("\\.y")) %>% 
+  rename(continent = continent.x,
+         country = country.x)
+
+gini_civlib_gni <- gini_civlib_gni %>%
+  mutate(year = as.numeric(year), 
+         gini_index = as.numeric(gini_index),
+         civlib_index = as.numeric(civlib_index),
+         gni_cap = as.numeric(gni_cap))
+```
+
+```{r 3D graph: dataframe + data wrangling}
+gini_civlib_gni_asia <- gini_civlib_gni %>% 
+  filter(continent == "Asia") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_asi = mean(gini_index, na.rm = T),
+            mean_civlib_asi = mean(civlib_index, na.rm = T),
+            mean_gni_asi = mean(gni_cap, na.rm = T))
+
+gini_civlib_gni_africa <- gini_civlib_gni %>% 
+  filter(continent == "Africa") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_afr = mean(gini_index, na.rm = T),
+            mean_civlib_afr = mean(civlib_index, na.rm = T),
+            mean_gni_afr = mean(gni_cap, na.rm = T))
+
+gini_civlib_gni_northam <- gini_civlib_gni %>% 
+  filter(continent == "North America") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_northam = mean(gini_index, na.rm = T),
+            mean_civlib_northam = mean(civlib_index, na.rm = T),
+            mean_gni_northam = mean(gni_cap, na.rm = T))
+
+gini_civlib_gni_latam <- gini_civlib_gni %>% 
+  filter(continent == "Latin America") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_latam = mean(gini_index, na.rm = T),
+            mean_civlib_latam = mean(civlib_index, na.rm = T),
+            mean_gni_latam = mean(gni_cap, na.rm = T))
+
+gini_civlib_gni_ocea <- gini_civlib_gni %>% 
+  filter(continent == "Oceania") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_ocea = mean(gini_index, na.rm = T),
+            mean_civlib_ocea = mean(civlib_index, na.rm = T),
+            mean_gni_ocea = mean(gni_cap, na.rm = T))
+
+gini_civlib_gni_eu <- gini_civlib_gni %>% 
+  filter(continent == "Europe") %>% 
+  group_by(year) %>% 
+  summarise(mean_gini_eu = mean(gini_index, na.rm = T),
+            mean_civlib_eu = mean(civlib_index, na.rm = T),
+            mean_gni_eu = mean(gni_cap, na.rm = T))
+  
+
+ # joining datasets
+mean_gini_civ_gni <- left_join(gini_civlib_gni_asia, gini_civlib_gni_africa)
+mean_gini_civ_gni <- left_join(mean_gini_civ_gni, gini_civlib_gni_northam)
+mean_gini_civ_gni <- left_join(mean_gini_civ_gni, gini_civlib_gni_latam)
+mean_gini_civ_gni <- left_join(mean_gini_civ_gni, gini_civlib_gni_ocea)
+mean_gini_civ_gni <- left_join(mean_gini_civ_gni, gini_civlib_gni_eu)
+
+# pivoting and renaming variables
+mean_gini_civ_gni_long <- mean_gini_civ_gni %>%
+  pivot_longer(cols = starts_with("mean_"), 
+               names_to = "names", 
+               values_to = "value") %>% 
+  separate(names, into = c("measure", "continent"), sep = "_", extra = "merge") %>% 
+  separate(continent, into = c("measure_type", "continent"), sep = "_") %>% 
+  select(-measure) %>% 
+  pivot_wider(names_from = measure_type, values_from = value) %>% 
+  mutate(continent = case_when(continent == "asi" ~ "Asia",
+                               continent == "afr" ~ "Africa",
+                               continent == "northam" ~ "N. America",
+                               continent == "latam" ~ "L. America",
+                               continent == "ocea" ~ "Oceania",
+                               continent == "eu" ~ "Europe")) %>% 
+  mutate(gini = round(gini, 2),
+         civlib = round(civlib, 2), 
+         gni = round(gni, 2))
+
+mean_gini_civ_gni_long <- mean_gini_civ_gni_long %>% 
+  mutate(year = as.numeric(year))
+
+plot_3D <- plot_ly(mean_gini_civ_gni_long, 
+                   x = ~civlib, 
+                   y = ~gini, 
+                   z = ~gni, 
+                   symbol = ~continent, 
+                   symbols = c('circle', 'square', 'diamond', 'cross', 'x', 'triangle-up', 'triangle-down'), 
+                   type = 'scatter3d', 
+                   mode = 'markers',
+                   hovertemplate = paste("CL index: %{x}", "<br>Gini Index: %{y}", "<br>GNI per capita: %{z}"),
+                   marker = list(size = 5, 
+                                 color = ~year, 
+                                 colorscale = 'Viridis', 
+                                 showscale = TRUE,
+                                 colorbar = list(x = 1.4, y = 0.45, tickmode = "array", tickvals = seq(1975, 2021, 10), ticktext = c("1975", "1985", "1995", "2005", "2015", "2021")))) %>%
+  layout(
+    title = list(
+      text = "3D Scatter Plot: Civil Liberties, Gini Index and GNI per capita",
+      y = 0.98),
+    scene = list(
+      xaxis = list(title = 'Civil Liberties (CL) Index'),
+      yaxis = list(title = 'Gini Index'),
+      zaxis = list(title = 'Gross National Product per capita')
+      ),
+    legend = list(
+      x = 1.00,
+      y = 0.1,
+      orientation = "v")
+    )
+```
+
+```{r reg lines}
+smooth_gini_loess_plot <- ggplot(gini_civlib_gni, aes(x = civlib_index, y = gini_index)) +
+  geom_point() +
+  geom_smooth(method = "loess", col = "blue", se = T) +
+  labs(title = "Linear regression: Gini index and Civil Liberty Index",
+       x = "Civil Liberty Index",
+       y = "Gini Index",
+       color = "GNI per capita") +
+  theme_minimal()
+
+smooth_gini_lm_plot <- ggplot(gini_civlib_gni, aes(x = civlib_index, y = gini_index)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "blue", se = T) +
+  labs(title = "Linear regression: Gini Index and Civil Liberty Index",
+       x = "Civil Liberty Index",
+       y = "Gini Index",
+       color = "GNI per capita",
+       caption = "The shaded area corresponds to the 95% confidence interval.") +
+  theme_minimal()
+
+smooth_gini_loess_plotly <- ggplotly(smooth_gini_loess_plot)
+
+smooth_gini_lm_plotly <- ggplotly(smooth_gini_lm_plot)
+```
+
+```{r Multivariate analysis attempt}
+# trying to find a decent model
+# a quadratic equation explains substantially better the variance of the model than with a linear one (gain of approx. 0.05), but a cubic equation seems to already lead to overfitting the data as the gain in variance explained is only  approx. 0.005. However, the variance explained remains low, and it seems more controls should be included in the model in order to better explain the variance. Note that statistical significance is high in all these 3 models, but it shouldn't be surprising given the high amount of data fed into it.
+
+polymodel_data <- na.omit(gini_civlib_gni) 
+
+#model_poly_1 <- lm(gini_index ~ poly(civlib_index, 1) + poly(gni_cap, 1), data = polymodel_data)
+model_poly_2 <- lm(gini_index ~ poly(civlib_index, 2) + poly(gni_cap, 2), data = polymodel_data)
+#model_poly_3 <- lm(gini_index ~ poly(civlib_index, 3) + poly(gni_cap, 3), data = polymodel_data)
+modelsummary <- summary(model_poly_2)
+
+# creating dataframe for predicted data
+prediction_data <- data.frame(
+  civlib_index = seq(min(polymodel_data$civlib_index), max(polymodel_data$civlib_index), length.out = 100),
+  gni_cap = mean(polymodel_data$gni_cap)) # Fixing gni_cap set as control
+
+# inputting predicted data in the prediction dataframe
+predictions <- predict(model_poly_2, newdata = prediction_data, se.fit = T)
+prediction_data$gini_index <- predictions$fit
+prediction_data$se <- predictions$se.fit
+prediction_data$lower <- prediction_data$gini_index - 1.96 * prediction_data$se
+prediction_data$upper <- prediction_data$gini_index + 1.96 * prediction_data$se
+
+highest_gini <- prediction_data %>% 
+  summarise(max_gini = max(gini_index))
+
+polymodel_data <- polymodel_data %>% 
+  mutate(tooltip_label = paste("CL Index:", civlib_index,
+                               "<br>Gini Index:", gini_index,
+                               "<br>GNI per capita:", gni_cap))
+
+# creating regression line
+reg_graph <- ggplot(data = polymodel_data, aes(x = civlib_index, y = gini_index)) +
+  geom_point(aes(color = gni_cap, text = tooltip_label)) +
+  geom_line(data = prediction_data, aes(x = civlib_index, y = gini_index), color = "blue") +
+  geom_ribbon(data = prediction_data, aes(x = civlib_index, ymin = lower, ymax = upper), alpha = 0.2) +
+  labs(title = "Polynomial Regression: Gini Index, CL Index and GNI per capita",
+       subtitle = "GNI per capita held as control",
+       x = "Civil Liberty (CL) Index",
+       y = "Gini Index",
+       color = "GNI per capita",
+       caption = "The shaded area corresponds to the 95% confidence interval.") +
+  theme_minimal()
+
+reg_graph_plotly <- ggplotly(reg_graph, tooltip = "text")
+```
+
+# SNAPSHOT
+
+## {height=30%}
+
+### {width=40%}
+```{r}
+# value box with highest and lowest gini in 2023
+value_box(
+  title = "Top 5 country with the highest Gini Index, 2023",
+  value = tags$div(
+    style = "font-size: 24px;",
+    "Highest Gini Index: South Africa (0.66)",
+    tags$br(),
+    tags$span(
+      style = "font-size: 20px;",  # Adjust the font size as needed
+      "Mean Gini Index (worldwide):", mean_gini
+    )
+  ),
+  showcase = sparkcol_highest_gini,
+  full_screen = TRUE,
+  theme = value_box_theme(bg = "#1E90FF")
+)
+```
+
+
+### {width=30%}
+
+```{r}
+value_box(
+  title = "Top 5 country with the highest Civil Liberties Index, 2023",
+  value = tags$div(style = "font-size: 20px;", "Highest Civil Liberties Index: Estonia (91.0)"),
+  showcase = sparkcol_highest_civlib,
+  full_screen = TRUE,
+  theme = value_box_theme(bg = "darkgreen")
+)
+```
+
+### {width=30%}
+
+```{r}
+value_box(
+  title = "Top 5 country with the lowest Civil Liberties Index, 2023",
+  value = tags$div(style = "font-size: 20px;", "Lowest Civil Liberties Index: North Korea (5.78)"),
+  showcase = sparkcol_lowest_civlib,
+  full_screen = TRUE,
+  theme = value_box_theme(bg = "darkgreen")
+)
+```
+
+
+## height=60%}
+
+### {width=50%}
+```{r}
+map_gini_plotly
+```
+
+### {width=50%}
+```{r}
+map_civlib_plotly
+```
+
+# LONGITUDINAL DATA
+
+## {layout-ncol=2}
+
+### {width=50%}
+```{r}
+graph_mean_gini_all_plotly
+```
+
+### {width=50%}
+```{r}
+plot_3D
+```
+
+# MULTIVARIATE ANALYSIS
+
+## {layout-ncol=2}
+
+### {width=50%}
+
+```{r}
+reg_graph_plotly
+```
+
+### {width=50%}
+
+#### {height=50%}
+The model on the left side of the screen displays a non-linear regression model, with GNI per capita used as control. Below is found the summary of the chosen model. Both of these elements shows that while holding GNI per capita constant, an increase in civil liberties lead to an increase in economic inequalities (i.e. higher Gini index), but only to a certain point (`r round(highest_gini, 4)`) after which inequalities decline. 
+
+A quadratic equation has been chosen here because, on the one hand, it explains substantially better the variance (i.e. Multiple R Squared value in the summary of the model below) of the model than with a linear one (gain of approx. 0.05). On the other hand, increasing the complexity with an equation including 3 or more polynomial terms seemingly leads to overfitting, as the gain in variance explained is only  approx. 0.005 in the case of a cubic equation. Despite choosing a quadratic equation appearing to be the best fit for the data, the variance explained remains fairly low (i.e 0.1859), which indicates that only 19% of the total variation of the dependent variable (i.e. Gini index) is explained by the independent variable (i.e. civil liberties), accounting for GNI per capita - this is a relatively low value, and this despite R-squared value related to social sciences related phenomena can be expected to be relatively lower than in other fields such as biomedical sciences. More controls should be included in the model in order to better explain the total variance of the Gini index. 
+
+Note that statistical significance of each coefficient is high (p-value: 0, in each case, as denoted in the model's outputs summary by the asterics realted to the regression's coefficients), but this isn't surprising given the fairly high amount of data fed into it.
+
+#### {height=50%}
+```{r}
+modelsummary
+```
+
+# DATASET
+
+```{r}
+gini_civlib_gni_clean <- gini_civlib_gni %>% 
+  select(country, continent, year, gini_index, civlib_index, gni_cap, - country_code) %>% 
+  rename(Country = country,
+         Continent = continent,
+         Year = year,
+         "Gini Index" = gini_index,
+         "Civil Liberties Index" = civlib_index,
+         "GNI per capita" = gni_cap) %>% 
+  mutate(Year = as.character(Year)) %>% 
+  filter(Year %in% c("1975", "1985", "2000", "2010", "2021"))
+```
+
+```{r}
+gini_civlib_gni_clean_reac <- htmltools::browsable( 
+  tagList( 
+    reactable(gini_civlib_gni_clean, defaultPageSize = 5, elementId = "gini-table", searchable = TRUE, filterable = TRUE),
+    tags$button("Download as CSV", onclick = "Reactable.downloadDataCSV('gini-table')") 
+    ) 
+  )
+
+gini_civlib_gni_clean_reac
+```
+
+# About
+
+blabla
+
