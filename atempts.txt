@@ -1,0 +1,380 @@
+value_box(
+  title = "Top 5 Countries with the Highest and Lowest Civil Liberties Index, 2023",
+  value = tags$div(
+    style = "font-size: 24px; width: 50%; height: 40vh; overflow: hidden;",
+    tags$div(
+      "Highest Civil Liberties Index: Estonia (91.0)",
+      style = "margin-bottom: 10px; font-size: 24px;"
+    ),
+    tags$div(
+      style = "display: flex; justify-content: space-between; height: 20vh;",
+      tags$div(
+        sparkcol_highest_civlib,
+        style = "width: 48%;"
+      ),
+      tags$div(
+        sparkcol_lowest_civlib,
+        style = "width: 48%;"
+      )
+    ),
+    tags$div(
+      "Lowest Civil Liberties Index: North Korea (5.78)",
+      style = "margin-top: 20px; font-size: 24px; margin-bottom: 10px;"
+    )
+  ),
+  full_screen = TRUE,
+  theme = value_box_theme(bg = "darkgreen")
+)
+
+
+
+
+
+--------------
+
+
+# UI
+ui <- fluidPage(
+  titlePanel("Interactive Plot"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("country", "Select Country:", choices = unique(gini_civlib_gni$country), selected = unique(gini_civlib_gni$country), multiple = TRUE),
+      sliderInput("year", "Select Year:", min = min(gini_civlib_gni$year, na.rm = TRUE), max = max(gini_civlib_gni$year, na.rm = TRUE), value = range(gini_civlib_gni$year, na.rm = TRUE), step = 1, sep = "")
+    ),
+    mainPanel(
+      plotlyOutput("plot")
+    )
+  )
+)
+
+# Server
+server <- function(input, output) {
+  filtered_data <- reactive({
+    gini_civlib_gni %>%
+      filter(country %in% input$country, year >= input$year[1], year <= input$year[2])
+  })
+  
+  output$plot <- renderPlotly({
+    p <- plot_ly(
+      data = filtered_data(),
+      x = ~gini_index,
+      y = ~civlib_index,
+      size = ~gni_cap,
+      color = ~country,
+      text = ~paste("Country:", country, "<br>Year:", year, "<br>GNI per Capita:", gni_cap),
+      type = 'scatter',
+      mode = 'markers',
+      marker = list(opacity = 0.7)
+    ) %>%
+      layout(
+        title = "Gini Index vs Civil Liberty Index",
+        xaxis = list(title = "Gini Index"),
+        yaxis = list(title = "Civil Liberty Index"),
+        showlegend = TRUE
+      )
+    
+    p
+  })
+}
+
+# Run the application 
+shinyApp(ui = ui, server = server)
+
+------
+
+REGRESSION WITH GNI
+
+```{r linear reg model}
+
+gini_civlib_gni_scaled <- gini_civlib_gni %>% 
+  mutate(civlib_index = scale(civlib_index),
+         gni_cap = scale(gni_cap))
+
+reg_model <- lm(gini_index ~ civlib_index + gni_cap, data = gini_civlib_gni_scaled) #vif is alright, seems GNI has more impact on gini than civ_lib
+
+gini_civlib_gni_scaled$predicted_gini <- predict(reg_model, gini_civlib_gni_scaled)
+
+ggplot(gini_civlib_gni_scaled, aes(x = civlib_index, y = gini_index)) +
+  geom_point(aes(color = gni_cap)) +
+  geom_line(aes(y = predicted_gini), color = "blue") +
+  labs(title = "Adjusted Correlation between Civil Liberty Index and Gini Index (2021)",
+       x = "Civil Liberty Index",
+       y = "Gini Index",
+       color = "Economic Development (GNI per capita)") +
+  theme_minimal() #when adding proxy for economic development, no-linear relationship -> check other models
+```
+
+```{r polynomial reg model}
+
+```
+
+```{r}
+gini_civlib_gni_2021_nona <- gini_civlib_gni_scaled %>%
+  filter(!is.na(gni_cap) & !is.na(civlib_index))
+
+poly_reg_model <- lm(gini_index ~ civlib_index + poly(gni_cap, 2), data = gini_civlib_gni_2021_nona)
+
+gini_civlib_gni_2021_nona$predicted_gini <- predict(poly_reg_model, newdata = new_data)
+
+ggplot(gini_civlib_gni_2021_nona, aes(x = civlib_index, y = gini_index)) +
+  geom_point(aes(color = gni_cap)) +
+  geom_line(aes(y = predicted_gini), color = "darkblue") +
+  labs(title = "Adjusted Correlation between Civil Liberty Index and Gini Index (2021)",
+       x = "Civil Liberty Index",
+       y = "Gini Index",
+       color = "Economic Development (GNI per capita)")
+  theme_minimal() #still fucked up
+```
+```{r}
+gam_reg_model <- gam(gini_index ~ s(civlib_index) + s(gni_cap), data = gini_civlib_gni_scaled)
+
+gini_civlib_gni_2021$predicted_gini_gam <- predict(gam_reg_model, gini_civlib_gni_2021)
+
+ggplot(gini_civlib_gni_2021, aes(x = civlib_index, y = gini_index)) +
+  geom_point(aes(color = gni_cap)) +
+  geom_line(aes(y = predicted_gini_gam), color = "darkblue") +
+  labs(title = "Adjusted Correlation between Civil Liberty Index and Gini Index (2021)",
+       x = "Civil Liberty Index",
+       y = "Gini Index",
+       color = "Economic Development (GNI per capita)")
+  theme_minimal() #still fucked up
+```
+
+# regression analysis
+gini_civlib_gni_2021 <- gini_civlib_gni %>%
+         filter(year == "2021") 
+
+reg_model <- lm(gini_index ~ civlib_index + gni_cap, data = gini_civlib_gni_2021)
+
+vif(reg_model)
+
+gini_civlib_gni_2021_nona <- gini_civlib_gni_2021 %>%
+  filter(!is.na(gni_cap))
+
+poly_reg_model <- lm(gini_index ~ civlib_index + poly(gni_cap, 2), data = gini_civlib_gni_2021_nona)
+
+gini_civlib_gni_2021$predicted_gini <- predict(reg_model, gini_civlib_gni_2021)
+
+ggplot(gini_civlib_gni_2021, aes(x = civlib_index, y = gini_index)) +
+  geom_point(aes(color = gni_cap)) +
+  geom_line(aes(y = predicted_gini), color = "darkblue") +
+  labs(title = "Adjusted Correlation between Civil Liberty Index and Gini Index (2021)",
+       x = "Civil Liberty Index",
+       y = "Gini Index",
+       color = "Economic Development (GNI per capita)")
+  theme_minimal()
+  
+gini_civlib_gni %>% 
+  filter(country %in% c("Estonia", "Sweden", "Denmark", "Iceland", "Portugal", "North Korea", "Eritrea", "Syria", "Belarus", "Myanmar"),
+         year == "2021") %>% 
+ggplot(aes(x = civlib_index, y = gini_index, size = gni_cap, color = country)) +
+  geom_point()
+
+ggplot(gini_civlib_gni, aes(x = civlib_index, y = gini_index)) +
+  geom_point() +
+  geom_smooth(method = "lm", col = "blue") +
+  labs(title = "Correlation between Civil Liberty Index and Gini Index",
+       x = "Civil Liberty Index",
+       y = "Gini Index") +
+  theme_minimal()
+  
+  
+  ---------
+  
+  
+  INTERACTIVE MAP WITH YEARS
+  
+  ui <- fluidPage(
+  titlePanel("Civil Liberties Index (CLI) per Country"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("year", "Select Year:", choices = unique(geom_x_civlib$year))
+    ),
+    mainPanel(
+      plotlyOutput("civlibMap")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$civlibMap <- renderPlotly({
+    geom_x_civlib_filtered <- geom_x_civlib %>% filter(year == input$year)
+    
+    geom_x_civlib_map <- 
+      geom_x_civlib_filtered %>% 
+      ggplot() +
+      geom_sf(aes(fill = civlib_index, text = tooltip_label, geometry = geometry)) +
+      scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
+      labs(title = paste("Civil Liberties Index (CLI) per Country,", input$year),
+           fill = "CLI") +
+      coord_sf(expand = F)
+    
+    ggplotly(geom_x_civlib_map, tooltip = "text")
+  })
+}
+
+shinyApp(ui = ui, server = server)
+
+---------
+
+CONTROLLING FOR GNI
+
+model_simple <- lm(gini_index ~ civlib_index, data = gini_civlib_gni)
+summary(model_simple)
+plot(model_simple)
+
+# linear model
+model <- lm(gini_index ~ civlib_index + gni_cap, data = gini_civlib_gni)
+
+# poly model
+polymodel_data <- na.omit(gini_civlib_gni) 
+model_poly <- lm(gini_index ~ poly(civlib_index, 1) + poly(gni_cap, 1), data = polymodel_data)
+summary(model_poly)
+plot(model_poly)
+
+#model interaction
+model_interaction <- lm(gini_index ~ civlib_index * gni_cap, data = gini_civlib_gni)
+summary(model_interaction)
+
+summary(model)
+
+plot(model)
+
+par(mfrow = c(2, 2))
+plot(model)
+
+prediction_data <- data.frame(
+  civlib_index = gini_civlib_gni$civlib_index,
+  gni_cap = gini_civlib_gni$gni_cap
+)
+prediction_data$predicted_gini <- predict(model_poly, newdata = prediction_data)
+
+ggplot(gini_civlib_gni, aes(x = civlib_index, y = gini_index)) +
+  geom_point(aes(color = gni_cap)) +
+  geom_smooth(method = "loess", col = "blue", se = TRUE) +
+  labs(title = "Smoothed Curve: Civil Liberty Index and Gini Index",
+       x = "Civil Liberty Index",
+       y = "Gini Index",
+       color = "GNI per capita") +
+  theme_minimal()
+
+
+-------
+
+
+# {.sidebar}
+```{r}
+sliderInput("year", "Select year: ",
+            min = min(gini_civlib_gni$year),
+            max = max(gini_civlib_gni$year),
+            value = min(gini_civlib_gni$year),
+            step = 1,
+            animate = TRUE)
+br()
+selectInput("countries", "Select Countries:", choices = unique(gini_civlib_gni$country), multiple = TRUE)
+```
+
+# Plot 
+```{r}
+plotlyOutput("bubbleChart")
+```
+
+# Data
+```{r}
+tableOutput("data")
+```
+
+```{r}
+#| context: server
+
+dataset <- reactive({
+  gini_civlib_gni %>%
+    filter(year == input$year & country %in% input$countries)
+})
+
+output$bubbleChart <- renderPlotly({
+  filtered_data <- dataset()
+  
+  p <- ggplot(filtered_data, aes(x = civlib_index, y = gini_index, size = gni_cap, text = country, color = country)) +
+    geom_point(alpha = 0.7) +
+    scale_size_continuous(range = c(3, 20)) +
+    labs(
+      x = "Civil Liberties",
+      y = "Gini Coefficient",
+      size = "GNI per Capita",
+      title = paste("Data for the Year", input$year)
+    ) +
+    theme_minimal() +
+    xlim(0, 100) +
+    ylim(0, 1)
+  
+  ggplotly(p, tooltip = "text")
+})
+
+output$data <- renderTable({
+  dataset()
+})
+```
+
+```{r}
+shinyApp(ui = fluidPage(
+  titlePanel("Bubble Chart of Civil Liberties, Gini Coefficient, and GNI per Capita"),
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("year", "Select year: ",
+                  min = min(gini_civlib_gni$year),
+                  max = max(gini_civlib_gni$year),
+                  value = min(gini_civlib_gni$year),
+                  step = 1,
+                  animate = TRUE),
+      selectInput("countries", "Select Countries:", choices = unique(gini_civlib_gni$country), multiple = TRUE)
+    ),
+    mainPanel(
+      plotlyOutput("bubbleChart")
+    )
+  )
+), server = server)
+```
+
+------
+
+DATASETS 
+
+## {height=34%}
+```{r}
+gini_raw <- gini_raw %>% 
+  rename(Country = country)
+
+gini_raw_reac <- reactable(gini_raw)
+gini_raw_reac
+```
+
+## {height=33%}
+```{r}
+civil_lib_raw <- civil_lib_raw %>% 
+  rename(Country = country)
+
+civil_lib_raw_reac <- reactable(civil_lib_raw)
+civil_lib_raw_reac
+```
+
+## {height=33%}
+```{r}
+gni_cap_raw <- gni_cap_raw %>% 
+  rename(Country = country)
+
+gni_cap_raw_reac <- reactable(gni_cap_raw)
+gni_cap_raw_reac
+
+--------
+
+TEST COLOR BAR
+
+plot_ly(mean_gini_civ_gni_long, x = ~continent, y = ~gni, color = ~year, colors = 'viridis', type = 'scatter', mode = 'markers') %>%
+  layout(colorbar = list(
+    x = 1.4, 
+    y = 0.45, 
+    tickmode = "array", 
+    tickvals = seq(1975, 2021, 10), 
+    ticktext = c("1975", "1985", "1995", "2005", "2015", "2021")
+  ))

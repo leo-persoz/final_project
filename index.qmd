@@ -1,4 +1,4 @@
---- 
+---
 title: "Civil Liberties and Inequalities"
 author: "Léo Persoz"
 format: 
@@ -14,7 +14,7 @@ execute:
   message: false
 ---
 
-``` {r load/install packages and datasets}
+```{r load/install packages and datasets}
 if(!require(pacman)) install.packages("pacman")
 pacman::p_load(tidyverse, 
                here,
@@ -27,12 +27,14 @@ pacman::p_load(tidyverse,
                htmltools, 
                reactable,
                janitor,
-               countrycode
+               countrycode,
+               gganimate
                #shiny,
                #car,
                #mgcv
                )
 
+# load datasets
 gini_raw <- read_csv(here("data/gini_coef.csv.csv"))
 
 gni_cap_raw <- read_csv(here("data/gnicap_atm_con.csv"))
@@ -69,8 +71,8 @@ civil_lib_long <- civil_lib_raw %>%
   rename(civlib_index = value)
 ```
 
-```{r}
-# value box - most inequality and least civil liberties
+```{r value box, highest/mean gini}
+# creating dataframe with highest gini, factor the country var
 top_highest_gini <- gini_long %>%
   filter(year == "2023") %>%
   mutate(country = case_when(country == "Central African Republic" ~ "Central Afr. Rep.", TRUE ~ country)) %>%
@@ -79,6 +81,7 @@ top_highest_gini <- gini_long %>%
   
 top_highest_gini$country <- factor(top_highest_gini$country, levels = top_highest_gini$country)
 
+# creating the graph to put within valuebox
 sparkcol_highest_gini <- plot_ly(top_highest_gini) %>%
   add_bars(
     x = ~country, y = ~gini_index,
@@ -118,17 +121,10 @@ gini_index_hist <- gini_long %>%
 mean_gini <- gini_long %>%
   filter(year == "2023") %>%
   summarize(mean_gini = round(mean(gini_index), 2))
-
-#value_box(
-  #title = "Top 5 country with the highest Gini Index, 2023",
-  #value = "Highest Gini Index: South Africa (0.66)",
-  #showcase = sparkcol_highest_gini,
-  #full_screen = TRUE,
-  #theme = value_box_theme(bg = "#1E90FF")
-#)
 ```
 
 ```{r value box, highest/lowest civil liberties}
+# creating dataframe for highest civil liberties, and factor the country var
 top_highest_civlib <- civil_lib_long %>%
   filter(year == "2021") %>%
   arrange(desc(civlib_index)) %>% 
@@ -136,6 +132,7 @@ top_highest_civlib <- civil_lib_long %>%
   
 top_highest_civlib$country <- factor(top_highest_civlib$country, levels = top_highest_civlib$country)
 
+# creating the graph to put within valuebox
 sparkcol_highest_civlib <- plot_ly(top_highest_civlib) %>%
   add_bars(
     x = ~country, y = ~civlib_index,
@@ -165,6 +162,7 @@ sparkcol_highest_civlib <- plot_ly(top_highest_civlib) %>%
     }"
   )
 
+# creating dataframe for lowest civil liberties and factor the country var
 top_lowest_civlib <- civil_lib_long %>%
   filter(year == "2021") %>%
   arrange(civlib_index) %>% 
@@ -172,6 +170,7 @@ top_lowest_civlib <- civil_lib_long %>%
   
 top_lowest_civlib$country <- factor(top_lowest_civlib$country, levels = top_lowest_civlib$country)
 
+# creating the graph to put within valuebox
 sparkcol_lowest_civlib <- plot_ly(top_lowest_civlib) %>%
   add_bars(
     x = ~country, y = ~civlib_index,
@@ -200,11 +199,10 @@ sparkcol_lowest_civlib <- plot_ly(top_lowest_civlib) %>%
         })
     }"
   )
-
 ```
 
-
-```{r worldmap + joining gini and map}
+```{r gini worldmap}
+# creating sf object, add country codes for joining
 country_shapess <- rnaturalearth::ne_countries()
 
 gini_long <- gini_long %>% 
@@ -219,7 +217,7 @@ gini_long <- gini_long %>%
 # setdiff(gini_long$country_code, country_shapess$adm0_a3)
 # setdiff(country_shapess$adm0_a3, gini_long$country_code) 
 
-#joining gini and geometry
+# joining gini and geometry
 geom_x_gini <- left_join(country_shapess, gini_long, by = c("adm0_a3" = "country_code")) %>% 
   mutate(tooltip_label = paste(country,
                                round(gini_index, 2),
@@ -230,13 +228,14 @@ geom_x_gini <- left_join(country_shapess, gini_long, by = c("adm0_a3" = "country
 geom_x_gini_map <- 
   geom_x_gini %>% 
   ggplot() +
-  geom_sf(aes(fill = gini_index, text = tooltip_label, geometry = geometry)) +
+  geom_sf(aes(fill = gini_index, text = tooltip_label, frame = year, geometry = geometry)) +
   labs(title = "Gini index (GI) per country, 2023",
        fill = "GI") +
   coord_sf(expand = F)
 
 map_gini_plotly <- ggplotly(geom_x_gini_map, tooltip = "text")
 ```
+
 ```{r map civil liberties}
 country_shapess <- rnaturalearth::ne_countries()
 
@@ -256,13 +255,14 @@ civil_lib_long <- civil_lib_long %>%
 geom_x_civlib <- left_join(country_shapess, civil_lib_long, by = c("adm0_a3" = "country_code")) %>% 
   mutate(tooltip_label = paste(country,
                                civlib_index,
-                               sep = ": "))
+                               sep = ": "),
+         year = as.numeric(year))
 
 # map fill gini 2023
 geom_x_civlib_map <- 
   geom_x_civlib %>% 
   ggplot() +
-  geom_sf(aes(fill = civlib_index, text = tooltip_label, geometry = geometry)) +
+  geom_sf(aes(fill = civlib_index, text = tooltip_label)) +
   scale_fill_gradient(low = "lightgreen", high = "darkgreen") +
   labs(title = "Civil liberties Index (CLI) per country, 2021",
        fill = "CLI") +
@@ -271,8 +271,8 @@ geom_x_civlib_map <-
 map_civlib_plotly <- ggplotly(geom_x_civlib_map, tooltip = "text")
 ```
 
-
-```{r column graphs}
+```{r column graphs (attempt)}
+# this was created when I thought about what was the most interesting to put in the dashboard. I ended up not including these graphs, as they are quite repetitive with the graphs within valueboxes.
 highest_gini_2023 <- gini_long %>% 
   filter(year == "2023") %>% 
   arrange(desc(gini_index)) %>% 
@@ -306,7 +306,6 @@ highest_gini_2000_plotly <- ggplotly(highest_gini_2000_plot) %>%
   layout(xaxis = list(tickangle = 45))
 ```
 
-
 ```{r line graph mean gini}
 # world's mean
 mean_gini_year <- gini_long %>% 
@@ -317,8 +316,6 @@ mean_gini_year <-
   mean_gini_year %>% 
   mutate(year = as.character(year)) %>%
   mutate(mean_gini = as.numeric(mean_gini))
-
-# round(mean_gini_year$mean_gini, 3)
 
 # continents means
 mean_gini_year_asia <- gini_long %>% 
@@ -341,7 +338,7 @@ mean_gini_year_ocea <- gini_long %>%
   group_by(year) %>% 
   summarise(mean_gini_ocea = mean(gini_index, na.rm = T))
 
-#creating north america and latin america (to avoid biases coming from economic differences between regions)
+# creating north america and latin america (to avoid biases coming from economic differences between regions)
 gini_long <- gini_long %>% 
   mutate(continent = case_when(country %in% c("USA", "Canada") & continent == "Americas" ~ "North America",
                                !(country %in% c("USA", "Canada")) & continent == "Americas" ~ "Latin America", T ~ continent))
@@ -379,7 +376,8 @@ mean_gini_long <- mean_gini_year_all %>%
     region == "mean_gini_latam" ~ "Latin America",
     region == "mean_gini_ocea" ~ "Oceania",
     TRUE ~ region),
-  tooltip_label = paste(region, " (", year, "):", round(mean_gini, 2), sep = ""))
+  tooltip_label = paste(region, " (", year, "):", round(mean_gini, 2), sep = ""),
+  year = as.numeric(year))
 
 # creating the line graph
 graph_mean_gini_all <- 
@@ -442,6 +440,7 @@ gini_civlib_gni <- gini_civlib_gni %>%
 ```
 
 ```{r 3D graph: dataframe + data wrangling}
+# creating regions
 gini_civlib_gni_asia <- gini_civlib_gni %>% 
   filter(continent == "Asia") %>% 
   group_by(year) %>% 
@@ -514,6 +513,10 @@ mean_gini_civ_gni_long <- mean_gini_civ_gni %>%
 mean_gini_civ_gni_long <- mean_gini_civ_gni_long %>% 
   mutate(year = as.numeric(year))
 
+# creating a 3D graph - note that I just didn't manage to order the year aside of the color bar (I gave up to preserve my mental health). However, the data setting the graph are right.
+tickvals <- seq(1975, 2021, 10)
+ticktext <- as.character(tickvals)
+
 plot_3D <- plot_ly(mean_gini_civ_gni_long, 
                    x = ~civlib, 
                    y = ~gini, 
@@ -527,7 +530,10 @@ plot_3D <- plot_ly(mean_gini_civ_gni_long,
                                  color = ~year, 
                                  colorscale = 'Viridis', 
                                  showscale = TRUE,
-                                 colorbar = list(x = 1.4, y = 0.45, tickmode = "array", tickvals = seq(1975, 2021, 10), ticktext = c("1975", "1985", "1995", "2005", "2015", "2021")))) %>%
+                                 colorbar = list(x = 1.4, y = 0.45, 
+                                                 tickmode = "array", 
+                                                 tickvals = tickvals,
+                                                 ticktext = ticktext))) %>%
   layout(
     title = list(
       text = "3D Scatter Plot: Civil Liberties, Gini Index and GNI per capita",
@@ -544,7 +550,7 @@ plot_3D <- plot_ly(mean_gini_civ_gni_long,
     )
 ```
 
-```{r reg lines}
+```{r tests to select equation for regression before adding gni per cap}
 smooth_gini_loess_plot <- ggplot(gini_civlib_gni, aes(x = civlib_index, y = gini_index)) +
   geom_point() +
   geom_smooth(method = "loess", col = "blue", se = T) +
@@ -570,8 +576,7 @@ smooth_gini_lm_plotly <- ggplotly(smooth_gini_lm_plot)
 ```
 
 ```{r Multivariate analysis attempt}
-# trying to find a decent model
-# a quadratic equation explains substantially better the variance of the model than with a linear one (gain of approx. 0.05), but a cubic equation seems to already lead to overfitting the data as the gain in variance explained is only  approx. 0.005. However, the variance explained remains low, and it seems more controls should be included in the model in order to better explain the variance. Note that statistical significance is high in all these 3 models, but it shouldn't be surprising given the high amount of data fed into it.
+# a quadratic equation explains substantially better the variance of the model than with a linear one (gain of approx. 0.05), but a cubic equation seems to already lead to overfitting the data as the gain in variance explained is only  approx. .005. However, the variance explained remains low, and it seems more controls should be included in the model in order to better explain the variance. Note that statistical significance is high in all these 3 models, but it shouldn't be surprising given the high amount of data fed into it.
 
 polymodel_data <- na.omit(gini_civlib_gni) 
 
@@ -602,9 +607,9 @@ polymodel_data <- polymodel_data %>%
 
 # creating regression line
 reg_graph <- ggplot(data = polymodel_data, aes(x = civlib_index, y = gini_index)) +
-  geom_point(aes(color = gni_cap, text = tooltip_label)) +
-  geom_line(data = prediction_data, aes(x = civlib_index, y = gini_index), color = "blue") +
-  geom_ribbon(data = prediction_data, aes(x = civlib_index, ymin = lower, ymax = upper), alpha = 0.2) +
+  geom_point(aes(color = gni_cap, text = tooltip_label), alpha = 0.3) +
+  geom_line(data = prediction_data, aes(x = civlib_index, y = gini_index), color = "red") +
+  geom_ribbon(data = prediction_data, aes(x = civlib_index, ymin = lower, ymax = upper), alpha = 0.3) +
   labs(title = "Regression analysis: Gini and CL Indexes, GNI per capita",
        x = "Civil Liberty (CL) Index",
        y = "Gini Index",
@@ -617,9 +622,10 @@ reg_graph_plotly <- ggplotly(reg_graph, tooltip = "text")
 
 # SNAPSHOT
 
-## {height=30%}
+##  {height="30%"}
 
-### {width=40%}
+###  {width="40%"}
+
 ```{r}
 # value box with highest and lowest gini in 2023
 value_box(
@@ -639,8 +645,7 @@ value_box(
 )
 ```
 
-
-### {width=30%}
+###  {width="30%"}
 
 ```{r}
 value_box(
@@ -652,7 +657,7 @@ value_box(
 )
 ```
 
-### {width=30%}
+###  {width="30%"}
 
 ```{r}
 value_box(
@@ -664,66 +669,73 @@ value_box(
 )
 ```
 
+## {height=60%}
 
-## height=60%}
+###  {width="50%"}
 
-### {width=50%}
 ```{r}
 map_gini_plotly
 ```
 
-### {width=50%}
+###  {width="50%"}
+
 ```{r}
 map_civlib_plotly
 ```
 
 # LONGITUDINAL DATA
 
-## {heigth=80%}
+##  {heigth="80%"}
 
-### {width=50%}
+###  {width="50%"}
+
 ```{r}
 graph_mean_gini_all_plotly
 ```
 
-### {width=50%}
+###  {width="50%"}
+
 ```{r}
 plot_3D
 ```
 
-## {height=20%}
-As shown in the line graph, Gini Indexes of each regions follow different patterns over time. However, it is possible to identify some trends among these regions, with a low rate of economic inequalities between 1975 and 1990, followed more recently by a general increase in economic inequalities since 2018 approximately. 
+##  {height="20%"}
 
-As shown in the 3D scattered plot, a trend between regions is more difficult to interpret. Indeed, the rate of regions with similar income level range tends to vary quite a lot: for example, Europe have seen its rate of civil liberties increase, while it remained fairly similar in North America. similarly, while civil liberties increased in Africa over time, it actually decreased in Latin America - however, note that the rate of civil liberties remained higher in Latin America than in Africa at any time point. Concerning GNI per capita, trends are more present, with an fairly constant increase of this rate in each regions (although at various speed), followed by a slight decrease in the recent years (which thus seem to be inversely related to Gini Index, as this later indice increases in the recent years).
+As shown in the line graph, Gini Indexes of each regions follow different patterns over time. However, it is possible to identify some trends among these regions, with a low rate of economic inequalities between 1975 and 1990, followed more recently by a general increase in economic inequalities since 2018 approximately.
+
+As shown in the 3D scattered plot, a trend between regions is more difficult to interpret. Indeed, the rate of regions with similar income level range tends to vary quite a lot: for example, Europe have seen its rate of civil liberties increase, while it remained fairly similar in North America. similarly, while civil liberties increased in Africa over time, it actually decreased in Latin America - however, note that the rate of civil liberties remained higher in Latin America than in Africa at any time point. Concerning GNI per capita, trends are more present, with an fairly constant increase of this rate in each regions (although at various speed), followed by a slight decrease in the recent years (which thus seem to be inversely related to Gini Index, as this later indice increases in the recent years). **Note that the years are ordered in data behind the graph, but the years displayed aside of it are wrong.**
 
 # MULTIVARIATE ANALYSIS
 
-## {layout-ncol=2}
+##  {layout-ncol="2"}
 
-### {width=50%}
+###  {width="50%"}
 
 ```{r fig.cap="Gini Index and Civil liberties Index are respectively set as dependent and independent variables. The shaded area corresponds to the 95% confidence interval."}
 reg_graph_plotly
 ```
 
+###  {width="50%"}
 
-### {width=50%}
+#### Description of the model's results {height="50%"}
 
-#### Description of the model{height=50%}
-The model on the left side of the screen displays a non-linear regression model, with GNI per capita used as control. Below is found the summary of the chosen model. Both of these elements shows that while holding GNI per capita constant, an increase in civil liberties lead to an increase in economic inequalities (i.e. higher Gini index), but only to a certain point (`r round(highest_gini, 4)`) after which inequalities decline. 
+The quadratic model appears to be the best fit for describing the relationship between civil liberties and economic inequality, as indicated by an increase in R-squared compared to a linear model and minimal gains when using a cubic model. However, with an R-squared of 0.1859, the model explains only a modest portion of the variance in the Gini index, suggesting the need for additional variables to better capture the complexity of economic inequality.
 
-A quadratic equation has been chosen here because, on the one hand, it explains substantially better the variance (i.e. Multiple R Squared value in the summary of the model below) of the model than with a linear one (gain of approx. 0.05). On the other hand, increasing the complexity with an equation including 3 or more polynomial terms seemingly leads to overfitting, as the gain in variance explained is only  approx. 0.005 in the case of a cubic equation. Despite choosing a quadratic equation appearing to be the best fit for the data, the variance explained remains fairly low (i.e 0.1859), which indicates that only 19% of the total variation of the dependent variable (i.e. Gini index) is explained by the independent variable (i.e. civil liberties), accounting for GNI per capita - this is a relatively low value, and this despite R-squared value related to social sciences related phenomena can be expected to be relatively lower than in other fields such as biomedical sciences. More controls should be included in the model in order to better explain the total variance of the Gini index. 
+The results suggest an inverted-U relationship between civil liberties and inequality, where increasing civil liberties initially leads to greater inequality until a threshold (i.e. `r round(highest_gini, 4)`), beyond which further civil liberties reduce inequality. This relationship, while statistically significant, may not explain a large proportion of the variation on its own (R-squared value: 0.1859), highlighting the importance of considering other socio-economic factors.
 
-Note that statistical significance of each coefficient is high (p-value = 0 in each case, as shown in the model's outputs summary section), but this isn't surprising given the fairly high amount of data fed into it.
+GNI per capita, used as a control, also exhibits a non-linear relationship, where increases in GNI per capita initially reduce inequality but eventually lead to an increase after surpassing a certain point. This finding aligns with economic theories suggesting that the benefits of growth are not evenly distributed at higher income levels.
 
-#### {height=50%}
+In conclusion, while the model yields statistically significant results, its relatively low explanatory power points to the need for a more comprehensive model, potentially incorporating other economic, social, and institutional factors.
+
+####  {height="50%"}
+
 ```{r title="Summary of the regression model"}
 modelsummary
 ```
 
 # DATASET
 
-The data used in this dashboard is shown below, and can be downloaded as a CSV.
+A condensed dataset used in this dashboard is shown below, and can be downloaded as a CSV. For more detailed data on the indicator figuring in this dashboard, please visit the gapminder website.
 
 ```{r}
 gini_civlib_gni_clean <- gini_civlib_gni %>% 
@@ -751,19 +763,24 @@ gini_civlib_gni_clean_reac
 
 # About
 
-All data used in this dashboard is taken from the __Gapminder__ website, which is an independent educational non-profit organization based in Sweden. It aims to combat global misconceptions by providing a fact-based worldview that everyone can understand. Founded in 2005 by Hans Rosling, Anna Rosling Rönnlund, and Ola Rosling, Gapminder uses reliable data to create engaging and easy-to-understand visualizations. Gapminder’s most notable tool, Gapminder World, allows users to explore historical data on various social, economic, and environmental indicators through interactive graphs. 
+All data used in this dashboard is taken from the **Gapminder** website, which is an independent educational non-profit organization based in Sweden. It aims to combat global misconceptions by providing a fact-based worldview that everyone can understand. Founded in 2005 by Hans Rosling, Anna Rosling Rönnlund, and Ola Rosling, Gapminder uses reliable data to create engaging and easy-to-understand visualizations. Gapminder’s most notable tool, Gapminder World, allows users to explore historical data on various social, economic, and environmental indicators through interactive graphs.
 
-__Description of the variables:__
+**Description of the variables:**
 
-__Gini Index:__ 
-The Gini Index is a indice measuring the level of inequalities in a country - in other terms, it is a statistical measure enabling to observe how a variable (wealth, income, ...) is distributed within a given population. This is calculated through a Lorenz curve, which sets on a x-y axis the cumulative part of the revenues of a population on the y axis, and the cumulative part of the population on the x axis. In case of perfect equality, the Lorenz curve would actually be a straight line with a positive slope starting at the origin. In case of inequality, the data will plot a curve that sets an area below the line of equality, and the size of this area corresponds to the Gini index. This index varies between 0 and 1, 0 corresponding to perfect equality while 1 corresponds to perfect inequality. Here is a video describing the calculation between this index:
+**Gini Index:** The Gini Index is a measure of the level of inequality within a country. In other words, it is a statistical measure used to observe how a variable (e.g., wealth, income) is distributed across a population. The Gini Index is calculated using the Lorenz curve, which plots the cumulative share of income received by the population on the y-axis against the cumulative share of the population on the x-axis.
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/y8y-gaNbe4U?si=of0Dji7C2luME35f" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>
- 	
-__Civil Liberties Index:__
-The civil liberties subattribute denotes the extent to which civil rights and liberties are respected. The five civil liberties sub-components are freedom of expression, freedom of association and assembly, freedom of religion, freedom of movement, and personal integrity and security, each of which reflects core concepts in the human rights literature. The five sub-components were aggregated into the civil liberties subattribute using BFA.
+In the case of perfect equality, the Lorenz curve would be a straight line from the origin at a 45-degree angle, representing equal distribution. When inequality is present, the Lorenz curve bows below this line of equality, creating an area between the line of equality and the curve. The size of this area represents the Gini Index.
 
-__GNI per capita:__
-GNI per capita (formerly GNP per capita) is the gross national income, converted to U.S. dollars using the World Bank Atlas method, divided by the midyear population. GNI is the sum of value added by all resident producers plus any product taxes (less subsidies) not included in the valuation of output plus net receipts of primary income (compensation of employees and property income) from abroad.
+The Gini Index ranges between 0 and 1:
 
+A Gini Index of 0 represents perfect equality, where everyone has the same income or wealth.
+A Gini Index of 1 represents perfect inequality, where all income or wealth is held by a single individual.
+Here is a video that explains how the Gini Index is calculated:
 
+<iframe width="560" height="315" src="https://www.youtube.com/embed/y8y-gaNbe4U?si=of0Dji7C2luME35f" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen>
+
+</iframe>
+
+**Civil Liberties Index:** The civil liberties subattribute denotes the extent to which civil rights and liberties are respected. The five civil liberties sub-components are freedom of expression, freedom of association and assembly, freedom of religion, freedom of movement, and personal integrity and security, each of which reflects core concepts in the human rights literature. The five sub-components were aggregated into the civil liberties subattribute using BFA.
+
+**GNI per capita:** GNI per capita (formerly GNP per capita) is the gross national income, converted to U.S. dollars using the World Bank Atlas method, divided by the midyear population. GNI is the sum of value added by all resident producers plus any product taxes (less subsidies) not included in the valuation of output plus net receipts of primary income (compensation of employees and property income) from abroad.
