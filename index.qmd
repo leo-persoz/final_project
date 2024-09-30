@@ -3,7 +3,6 @@ title: "Civil Liberties and Inequalities"
 author: "Léo Persoz"
 format: 
   dashboard:
-    css: styles.css
     logo: images/LOGO_IMAGE.png
     nav-buttons: [github]
     github: https://github.com/YOUR_URL
